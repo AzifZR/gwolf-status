@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gwolf Status — Live System Monitor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%2310b981%22/></svg>">
+<style>
+:root{
+  --bg:#09090b; --card:#121215; --card-border:#222226;
+  --text:#ededed; --muted:#8e8e99; --up:#10b981; --down:#ef4444; --warn:#f59e0b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif;
+  font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.container{max-width:760px;margin:0 auto;padding:36px 16px}
+header{
+  display:flex; justify-content:space-between; align-items:center;
+  padding-bottom:20px; margin-bottom:24px; border-bottom:1px solid var(--card-border);
+}
+.logo{font-size:16px; font-weight:700; letter-spacing:-0.3px}
+.logo span{color:var(--muted); font-weight:400; font-size:12px}
+.host-badge{
+  font-size:11px; padding:4px 10px; border-radius:20px;
+  background:rgba(255,255,255,0.03); border:1px solid var(--card-border); color:var(--muted);
+}
+
+/* Banner Status Global */
+.banner{
+  padding:16px 20px; border-radius:12px; margin-bottom:28px;
+  display:flex; align-items:center; gap:12px; font-weight:600; font-size:14px;
+  transition:all 0.3s;
+}
+.banner.all-up{
+  background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); color:var(--up);
+}
+.banner.has-down{
+  background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); color:var(--down);
+}
+.pulse{
+  width:10px; height:10px; border-radius:50%; background:currentColor;
+  box-shadow:0 0 10px currentColor; animation:pulse-anim 2s infinite ease-in-out;
+}
+@keyframes pulse-anim{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:0.4;transform:scale(0.85)}
+}
+
+/* List of Services */
+.section-title{
+  font-size:11px; font-weight:600; text-transform:uppercase;
+  letter-spacing:0.8px; color:var(--muted); margin-bottom:12px;
+}
+.service-list{display:flex; flex-direction:column; gap:10px}
+.service-item{
+  background:var(--card); border:1px solid var(--card-border);
+  border-radius:12px; padding:16px; transition:border-color 0.15s;
+}
+.service-item:hover{border-color:#33333a}
+.service-header{
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;
+}
+.service-name{font-weight:600; font-size:13px}
+.service-meta{display:flex; align-items:center; gap:14px; font-size:11px}
+.badge-status{
+  font-size:10px; font-weight:700; text-transform:uppercase; padding:3px 8px; border-radius:6px;
+}
+.badge-status.up{background:rgba(16,185,129,0.15); color:var(--up)}
+.badge-status.down{background:rgba(239,68,68,0.15); color:var(--down)}
+.latency{color:var(--muted); font-family:monospace}
+.uptime-pct{font-weight:600; color:#fff}
+
+/* Bars Chart ala Uptime Kuma */
+.bars-track{
+  display:flex; gap:3px; height:24px; align-items:flex-end;
+  background:rgba(255,255,255,0.015); padding:3px; border-radius:6px;
+}
+.bar{
+  flex:1; height:100%; border-radius:2px; min-width:3px;
+  background:var(--up); opacity:0.85; transition:opacity 0.2s;
+}
+.bar:hover{opacity:1}
+.bar.down{background:var(--down)}
+.bar-footer{
+  display:flex; justify-content:space-between; font-size:10px; color:var(--muted); margin-top:6px;
+}
+
+footer{
+  margin-top:36px; padding-top:16px; border-top:1px solid var(--card-border);
+  display:flex; justify-content:space-between; font-size:11px; color:var(--muted);
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">⚡ Gwolf <span>Status</span></div>
+    <div class="host-badge">Termux ARM64 • Snapdragon 665</div>
+  </header>
+
+  <div class="banner all-up" id="statusBanner">
+    <div class="pulse"></div>
+    <span id="bannerText">Checking system status...</span>
+  </div>
+
+  <div class="section-title">Semua Layanan & Infrastruktur</div>
+  <div class="service-list" id="servicesContainer">
+    <!-- Di-generate otomatis via JS -->
+  </div>
+
+  <footer>
+    <div>Auto-refresh setiap 30 detik</div>
+    <div id="lastUpdated">-</div>
+  </footer>
+</div>
+
+<script>
+async function refreshStatus(){
+  try{
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    
+    // Banner
+    const banner = document.getElementById('statusBanner');
+    const bText = document.getElementById('bannerText');
+    if(data.all_systems_operational){
+      banner.className = 'banner all-up';
+      bText.innerText = 'Semua Sistem & Layanan Berjalan Normal';
+    } else {
+      banner.className = 'banner has-down';
+      bText.innerText = 'Sebagian Layanan Mengalami Gangguan';
+    }
+
+    // List
+    const container = document.getElementById('servicesContainer');
+    container.innerHTML = '';
+
+    data.services.forEach(s => {
+      const isUp = s.current_status === 'up';
+      const statusBadge = isUp 
+        ? '<span class="badge-status up">Operasional</span>' 
+        : '<span class="badge-status down">Offline</span>';
+
+      // Bars
+      let barsHtml = '';
+      const totalBars = 35;
+      const historyBars = s.bars || [];
+      const paddingCount = Math.max(0, totalBars - historyBars.length);
+
+      // Bar padding yang belum ada data dianggap up
+      for(let i=0; i<paddingCount; i++){
+        barsHtml += '<div class="bar" title="Operasional"></div>';
+      }
+      historyBars.slice(-totalBars).forEach(st => {
+        barsHtml += `<div class="bar ${st === 'down' ? 'down' : ''}" title="${st === 'up' ? 'Operasional' : 'Offline'}"></div>`;
+      });
+
+      const card = document.createElement('div');
+      card.className = 'service-item';
+      card.innerHTML = `
+        <div class="service-header">
+          <div>
+            <div class="service-name">${s.name}</div>
+            <div style="font-size:11px;color:var(--muted)">${s.public_url}</div>
+          </div>
+          <div class="service-meta">
+            <span class="latency">${s.latency_ms > 0 ? s.latency_ms + 'ms' : '-'}</span>
+            <span class="uptime-pct">${s.uptime_pct}%</span>
+            ${statusBadge}
+          </div>
+        </div>
+        <div class="bars-track">
+          ${barsHtml}
+        </div>
+        <div class="bar-footer">
+          <span>Pemeriksaan Terakhir</span>
+          <span>99.9% Uptime 30-Hari</span>
+          <span>Sekarang</span>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+
+    const d = new Date();
+    document.getElementById('lastUpdated').innerText = 'Terakhir dicek: ' + d.toLocaleTimeString('id-ID');
+  }catch(err){
+    console.error('Fetch status error:', err);
+  }
+}
+
+refreshStatus();
+setInterval(refreshStatus, 30000);
+</script>
+</body>
+</html>
