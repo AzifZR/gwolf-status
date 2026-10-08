@@ -62,7 +62,7 @@ SERVICES = [
         "name": "SSH Remote Terminal",
         "host": "127.0.0.1",
         "port": 8022,
-        "public_url": "Termux Port 8022",
+        "public_url": "Termux Internal Service",
         "type": "tcp"
     },
     {
