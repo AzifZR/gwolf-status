@@ -63,7 +63,7 @@ SERVICES = [
         "name": "Runsv Supervisor",
         "public_url": "Termux Process Manager",
         "type": "process",
-        "check_cmd": "ps -ef | grep '[r]unsvdir.*/usr/var/service'"
+        "check_cmd": "ps -ef | grep '[r]unsv'"
     },
     {
         "id": "status_web",
@@ -170,7 +170,7 @@ def get_system_telemetry():
         pass
 
     cf_alive = subprocess.run(["pgrep", "-f", "cloudflared tunnel"], stdout=subprocess.DEVNULL).returncode == 0
-    supervisor_alive = subprocess.run("ps -ef | grep '[r]unsvdir.*/usr/var/service'", shell=True, stdout=subprocess.DEVNULL).returncode == 0
+    supervisor_alive = subprocess.run("ps -ef | grep '[r]unsv'", shell=True, stdout=subprocess.DEVNULL).returncode == 0
 
     return {
         "ram": {
