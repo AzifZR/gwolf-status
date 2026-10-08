@@ -45,6 +45,27 @@ SERVICES = [
         "type": "http"
     },
     {
+        "id": "discord_dash",
+        "name": "Discord Bot Dashboard",
+        "url": "http://127.0.0.1:8090",
+        "public_url": "https://discord.gwolfdev.my.id",
+        "type": "http"
+    },
+    {
+        "id": "discord_bot",
+        "name": "Discord Bot (Asisten MI)",
+        "public_url": "Discord Gateway Daemon",
+        "type": "process",
+        "check_cmd": "ps -ef | grep '[d]iscord-bot/venv/bin/python.*main.py'"
+    },
+    {
+        "id": "supervisor",
+        "name": "Runsv Supervisor",
+        "public_url": "Termux Process Manager",
+        "type": "process",
+        "check_cmd": "ps -ef | grep '[r]unsvdir.*/usr/var/service'"
+    },
+    {
         "id": "status_web",
         "name": "Status Engine",
         "url": "http://127.0.0.1:3002",
@@ -149,6 +170,7 @@ def get_system_telemetry():
         pass
 
     cf_alive = subprocess.run(["pgrep", "-f", "cloudflared tunnel"], stdout=subprocess.DEVNULL).returncode == 0
+    supervisor_alive = subprocess.run("ps -ef | grep '[r]unsvdir.*/usr/var/service'", shell=True, stdout=subprocess.DEVNULL).returncode == 0
 
     return {
         "ram": {
@@ -169,7 +191,8 @@ def get_system_telemetry():
             "pct": round((disk_used / disk_total) * 100, 1) if disk_total else 0
         },
         "temp_c": temp_c,
-        "cloudflared_running": cf_alive
+        "cloudflared_running": cf_alive,
+        "supervisor_running": supervisor_alive
     }
 
 def ping_service(srv):
@@ -211,6 +234,12 @@ def ping_service(srv):
                         st = "up"
             except Exception:
                 st = "up"
+        else:
+            st = "down"
+    elif srv["type"] == "process":
+        res = subprocess.run(srv["check_cmd"], shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if res.returncode == 0:
+            st = "up"
         else:
             st = "down"
 

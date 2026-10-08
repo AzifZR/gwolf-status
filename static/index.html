@@ -159,6 +159,11 @@ footer{
       <div class="tel-val" id="telCf" style="color:var(--up)">-</div>
       <div class="tel-sub">Cloudflared Edge</div>
     </div>
+    <div class="tel-card">
+      <div class="tel-title">🛡️ Supervisor</div>
+      <div class="tel-val" id="telSup" style="color:var(--up)">-</div>
+      <div class="tel-sub">Runsv Engine</div>
+    </div>
   </div>
 
   <div class="section-title">Layanan & Infrastruktur</div>
@@ -222,6 +227,17 @@ async function refreshStatus(){
       } else {
         cfEl.innerText = 'Offline';
         cfEl.style.color = 'var(--down)';
+      }
+
+      const supEl = document.getElementById('telSup');
+      if(supEl){
+        if(sys.supervisor_running){
+          supEl.innerText = 'Active';
+          supEl.style.color = 'var(--up)';
+        } else {
+          supEl.innerText = 'CRASHED';
+          supEl.style.color = 'var(--down)';
+        }
       }
     }
 
