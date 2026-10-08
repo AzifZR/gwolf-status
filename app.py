@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gwolf Status Page — Ultra-Lightweight Monitoring Engine
+Gwolf Status Page — Ultra-Lightweight Monitoring Engine with System Telemetry
 Running on Termux Android (Port 3002)
 Target: https://status.gwolfdev.my.id
 """
@@ -11,6 +11,9 @@ import socket
 import urllib.request
 import urllib.error
 import threading
+import subprocess
+import os
+import shutil
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -28,13 +31,6 @@ SERVICES = [
         "type": "http"
     },
     {
-        "id": "dns_adguard",
-        "name": "AdGuard Home DNS",
-        "url": "http://127.0.0.1:3000",
-        "public_url": "https://dns.gwolfdev.my.id",
-        "type": "http"
-    },
-    {
         "id": "swiss_tools",
         "name": "Swiss Army Tools",
         "url": "http://127.0.0.1:8083",
@@ -47,6 +43,27 @@ SERVICES = [
         "url": "http://127.0.0.1:8082",
         "public_url": "https://link.gwolfdev.my.id",
         "type": "http"
+    },
+    {
+        "id": "status_web",
+        "name": "Status Engine",
+        "url": "http://127.0.0.1:3002",
+        "public_url": "https://status.gwolfdev.my.id",
+        "type": "http"
+    },
+    {
+        "id": "cf_tunnel",
+        "name": "Cloudflare Tunnel",
+        "public_url": "gwolfdev.my.id • gwolfdev.me",
+        "type": "cf_tunnel"
+    },
+    {
+        "id": "ssh_gateway",
+        "name": "SSH Remote Terminal",
+        "host": "127.0.0.1",
+        "port": 8022,
+        "public_url": "Termux Port 8022",
+        "type": "tcp"
     },
     {
         "id": "portway_space",
@@ -65,8 +82,6 @@ SERVICES = [
     }
 ]
 
-# In-memory history buffer (last 30 ticks per service)
-# Each record: {"time": int, "status": "up"|"down", "ms": float}
 history = {}
 
 def load_history():
@@ -87,6 +102,76 @@ def save_history():
     except Exception as e:
         print("[status] save error:", e)
 
+def get_system_telemetry():
+    # RAM & Swap
+    mem_used, mem_total, mem_avail = 0, 0, 0
+    swap_used, swap_total = 0, 0
+    try:
+        lines = subprocess.check_output(["free", "-m"], timeout=2).decode("utf-8").splitlines()
+        if len(lines) >= 2:
+            p = lines[1].split()
+            mem_total = int(p[1])
+            mem_used = int(p[2])
+            mem_avail = int(p[6]) if len(p) > 6 else int(p[3])
+        if len(lines) >= 3:
+            s = lines[2].split()
+            swap_total = int(s[1])
+            swap_used = int(s[2])
+    except Exception:
+        pass
+
+    # Disk
+    disk_total, disk_used, disk_free = 0, 0, 0
+    try:
+        du = shutil.disk_usage(os.path.expanduser("~"))
+        disk_total = round(du.total / (1024**3), 1)
+        disk_used = round((du.total - du.free) / (1024**3), 1)
+        disk_free = round(du.free / (1024**3), 1)
+    except Exception:
+        pass
+
+    # Thermal
+    temp_c = 0
+    try:
+        for f in os.listdir("/sys/class/thermal/"):
+            if f.startswith("thermal_zone"):
+                tpath = f"/sys/class/thermal/{f}/type"
+                if os.path.exists(tpath):
+                    with open(tpath, "r") as tf:
+                        typ = tf.read().strip()
+                    if any(x in typ for x in ["vbat", "battery", "pm6125"]):
+                        with open(f"/sys/class/thermal/{f}/temp", "r") as vf:
+                            v = int(vf.read().strip())
+                            if v > 1000:
+                                temp_c = v // 1000
+                                break
+    except Exception:
+        pass
+
+    cf_alive = subprocess.run(["pgrep", "-f", "cloudflared tunnel"], stdout=subprocess.DEVNULL).returncode == 0
+
+    return {
+        "ram": {
+            "used_mb": mem_used,
+            "total_mb": mem_total,
+            "avail_mb": mem_avail,
+            "pct": round((mem_used / mem_total) * 100, 1) if mem_total else 0
+        },
+        "swap": {
+            "used_mb": swap_used,
+            "total_mb": swap_total,
+            "pct": round((swap_used / swap_total) * 100, 1) if swap_total else 0
+        },
+        "disk": {
+            "used_gb": disk_used,
+            "total_gb": disk_total,
+            "free_gb": disk_free,
+            "pct": round((disk_used / disk_total) * 100, 1) if disk_total else 0
+        },
+        "temp_c": temp_c,
+        "cloudflared_running": cf_alive
+    }
+
 def ping_service(srv):
     start = time.time()
     st = "down"
@@ -98,12 +183,10 @@ def ping_service(srv):
                 srv["url"],
                 headers={"User-Agent": "Gwolf-StatusWatch/1.0"}
             )
-            # Timeout 4 detik
             with urllib.request.urlopen(req, timeout=4.0) as resp:
                 if resp.status < 500:
                     st = "up"
         except urllib.error.HTTPError as he:
-            # 401 Unauthorized / 302 Redirect = service is UP & responding!
             if he.code < 500:
                 st = "up"
         except Exception:
@@ -117,6 +200,18 @@ def ping_service(srv):
             if res == 0:
                 st = "up"
         except Exception:
+            st = "down"
+    elif srv["type"] == "cf_tunnel":
+        cf_alive = subprocess.run(["pgrep", "-f", "cloudflared tunnel"], stdout=subprocess.DEVNULL).returncode == 0
+        if cf_alive:
+            try:
+                req = urllib.request.Request("https://1.1.1.1/cdn-cgi/trace", headers={"User-Agent": "Gwolf-StatusWatch/1.0"})
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    if resp.status == 200:
+                        st = "up"
+            except Exception:
+                st = "up"
+        else:
             st = "down"
 
     elapsed = (time.time() - start) * 1000.0
@@ -133,11 +228,10 @@ def monitor_worker():
             if sid not in history:
                 history[sid] = []
             history[sid].append(item)
-            # Keep max 40 data points (cukup buat bar chart horizontal)
             if len(history[sid]) > 40:
                 history[sid] = history[sid][-40:]
         save_history()
-        time.sleep(30) # Poll every 30 seconds
+        time.sleep(30)
 
 class StatusHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
@@ -178,7 +272,6 @@ class StatusHandler(BaseHTTPRequestHandler):
                 if last_st != "up":
                     all_up = False
                 
-                # Uptime calculation %
                 up_count = sum(1 for x in h_list if x["status"] == "up")
                 total_cnt = len(h_list)
                 pct = round((up_count / total_cnt) * 100.0, 1) if total_cnt > 0 else 100.0
@@ -196,6 +289,7 @@ class StatusHandler(BaseHTTPRequestHandler):
             self.send_json({
                 "all_systems_operational": all_up,
                 "timestamp": int(time.time()),
+                "system": get_system_telemetry(),
                 "services": result
             })
             return

@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gwolf Status — Live System Monitor</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%2310b981%22/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2240%22 fill=%22%23cee800%22/></svg>">
 <style>
 :root{
-  --bg:#09090b; --card:#121215; --card-border:#222226;
-  --text:#ededed; --muted:#8e8e99; --up:#10b981; --down:#ef4444; --warn:#f59e0b;
+  --bg:#0b0b0f; --card:#13131a; --card-border:#23232e;
+  --text:#ededed; --muted:#8e8e99; --up:#cee800; --down:#f55393; --warn:#ff8f1c;
+  --purple:#765bb7; --violet:#8626c3;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
@@ -16,7 +17,7 @@ body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,sans-serif;
   font-size:13px; line-height:1.5; -webkit-font-smoothing:antialiased;
 }
-.container{max-width:760px;margin:0 auto;padding:36px 16px}
+.container{max-width:800px;margin:0 auto;padding:36px 16px}
 header{
   display:flex; justify-content:space-between; align-items:center;
   padding-bottom:20px; margin-bottom:24px; border-bottom:1px solid var(--card-border);
@@ -30,15 +31,15 @@ header{
 
 /* Banner Status Global */
 .banner{
-  padding:16px 20px; border-radius:12px; margin-bottom:28px;
+  padding:16px 20px; border-radius:12px; margin-bottom:24px;
   display:flex; align-items:center; gap:12px; font-weight:600; font-size:14px;
   transition:all 0.3s;
 }
 .banner.all-up{
-  background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); color:var(--up);
+  background:rgba(206,232,0,0.08); border:1px solid rgba(206,232,0,0.25); color:var(--up);
 }
 .banner.has-down{
-  background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); color:var(--down);
+  background:rgba(245,83,147,0.08); border:1px solid rgba(245,83,147,0.25); color:var(--down);
 }
 .pulse{
   width:10px; height:10px; border-radius:50%; background:currentColor;
@@ -48,6 +49,23 @@ header{
   0%,100%{opacity:1;transform:scale(1)}
   50%{opacity:0.4;transform:scale(0.85)}
 }
+
+/* Telemetry Widgets Grid */
+.telemetry-grid{
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:12px;
+  margin-bottom:32px;
+}
+.tel-card{
+  background:var(--card); border:1px solid var(--card-border);
+  border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:6px;
+}
+.tel-title{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; font-weight:600}
+.tel-val{font-size:16px; font-weight:700}
+.tel-sub{font-size:11px; color:var(--muted)}
+.tel-bar-bg{height:4px; background:var(--card-border); border-radius:2px; margin-top:4px; overflow:hidden}
+.tel-bar-fg{height:100%; background:var(--purple); border-radius:2px; transition:width 0.3s}
+.tel-bar-fg.high{background:var(--warn)}
+.tel-bar-fg.critical{background:var(--down)}
 
 /* List of Services */
 .section-title{
@@ -63,17 +81,17 @@ header{
 .service-header{
   display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;
 }
-.service-name{font-weight:600; font-size:13px}
+.service-name{font-weight:600; font-size:13px; color:#fff}
 .service-meta{display:flex; align-items:center; gap:14px; font-size:11px}
 .badge-status{
   font-size:10px; font-weight:700; text-transform:uppercase; padding:3px 8px; border-radius:6px;
 }
-.badge-status.up{background:rgba(16,185,129,0.15); color:var(--up)}
-.badge-status.down{background:rgba(239,68,68,0.15); color:var(--down)}
+.badge-status.up{background:rgba(206,232,0,0.15); color:var(--up)}
+.badge-status.down{background:rgba(245,83,147,0.15); color:var(--down)}
 .latency{color:var(--muted); font-family:monospace}
 .uptime-pct{font-weight:600; color:#fff}
 
-/* Bars Chart ala Uptime Kuma */
+/* Bars Chart */
 .bars-track{
   display:flex; gap:3px; height:24px; align-items:flex-end;
   background:rgba(255,255,255,0.015); padding:3px; border-radius:6px;
@@ -92,6 +110,12 @@ footer{
   margin-top:36px; padding-top:16px; border-top:1px solid var(--card-border);
   display:flex; justify-content:space-between; font-size:11px; color:var(--muted);
 }
+
+@media(max-width:500px){
+  .telemetry-grid{grid-template-columns:1fr 1fr}
+  .service-meta{gap:8px}
+  .uptime-pct{display:none}
+}
 </style>
 </head>
 <body>
@@ -106,7 +130,38 @@ footer{
     <span id="bannerText">Checking system status...</span>
   </div>
 
-  <div class="section-title">Semua Layanan & Infrastruktur</div>
+  <div class="telemetry-grid" id="telemetryGrid" style="display:none">
+    <div class="tel-card">
+      <div class="tel-title">🌡️ Thermal</div>
+      <div class="tel-val" id="telTemp">-</div>
+      <div class="tel-sub">Device Temp</div>
+    </div>
+    <div class="tel-card">
+      <div class="tel-title">🧠 RAM</div>
+      <div class="tel-val" id="telRam">-</div>
+      <div class="tel-sub" id="telRamSub">-</div>
+      <div class="tel-bar-bg"><div class="tel-bar-fg" id="telRamBar" style="width:0%"></div></div>
+    </div>
+    <div class="tel-card">
+      <div class="tel-title">🔄 Swap</div>
+      <div class="tel-val" id="telSwap">-</div>
+      <div class="tel-sub" id="telSwapSub">-</div>
+      <div class="tel-bar-bg"><div class="tel-bar-fg" id="telSwapBar" style="width:0%"></div></div>
+    </div>
+    <div class="tel-card">
+      <div class="tel-title">💾 Disk</div>
+      <div class="tel-val" id="telDisk">-</div>
+      <div class="tel-sub" id="telDiskSub">-</div>
+      <div class="tel-bar-bg"><div class="tel-bar-fg" id="telDiskBar" style="width:0%"></div></div>
+    </div>
+    <div class="tel-card">
+      <div class="tel-title">🌐 Tunnel</div>
+      <div class="tel-val" id="telCf" style="color:var(--up)">-</div>
+      <div class="tel-sub">Cloudflared Edge</div>
+    </div>
+  </div>
+
+  <div class="section-title">Layanan & Infrastruktur</div>
   <div class="service-list" id="servicesContainer">
     <!-- Di-generate otomatis via JS -->
   </div>
@@ -118,6 +173,13 @@ footer{
 </div>
 
 <script>
+function colorizeBar(el, pct) {
+  el.style.width = pct + '%';
+  el.className = 'tel-bar-fg';
+  if(pct > 85) el.classList.add('critical');
+  else if(pct > 70) el.classList.add('high');
+}
+
 async function refreshStatus(){
   try{
     const res = await fetch('/api/status');
@@ -134,6 +196,35 @@ async function refreshStatus(){
       bText.innerText = 'Sebagian Layanan Mengalami Gangguan';
     }
 
+    // Telemetry
+    if(data.system){
+      document.getElementById('telemetryGrid').style.display = 'grid';
+      const sys = data.system;
+      
+      document.getElementById('telTemp').innerText = sys.temp_c > 0 ? sys.temp_c + ' °C' : 'N/A';
+      
+      document.getElementById('telRam').innerText = (sys.ram.used_mb/1024).toFixed(1) + ' GB';
+      document.getElementById('telRamSub').innerText = sys.ram.pct + '% / ' + (sys.ram.total_mb/1024).toFixed(1) + ' GB';
+      colorizeBar(document.getElementById('telRamBar'), sys.ram.pct);
+      
+      document.getElementById('telSwap').innerText = (sys.swap.used_mb/1024).toFixed(1) + ' GB';
+      document.getElementById('telSwapSub').innerText = sys.swap.pct + '% / ' + (sys.swap.total_mb/1024).toFixed(1) + ' GB';
+      colorizeBar(document.getElementById('telSwapBar'), sys.swap.pct);
+      
+      document.getElementById('telDisk').innerText = sys.disk.free_gb + ' GB';
+      document.getElementById('telDiskSub').innerText = 'Free / ' + sys.disk.total_gb + ' GB';
+      colorizeBar(document.getElementById('telDiskBar'), sys.disk.pct);
+
+      const cfEl = document.getElementById('telCf');
+      if(sys.cloudflared_running){
+        cfEl.innerText = 'Active';
+        cfEl.style.color = 'var(--up)';
+      } else {
+        cfEl.innerText = 'Offline';
+        cfEl.style.color = 'var(--down)';
+      }
+    }
+
     // List
     const container = document.getElementById('servicesContainer');
     container.innerHTML = '';
@@ -146,13 +237,12 @@ async function refreshStatus(){
 
       // Bars
       let barsHtml = '';
-      const totalBars = 35;
+      const totalBars = 40;
       const historyBars = s.bars || [];
       const paddingCount = Math.max(0, totalBars - historyBars.length);
 
-      // Bar padding yang belum ada data dianggap up
       for(let i=0; i<paddingCount; i++){
-        barsHtml += '<div class="bar" title="Operasional"></div>';
+        barsHtml += '<div class="bar" title="No Data"></div>';
       }
       historyBars.slice(-totalBars).forEach(st => {
         barsHtml += `<div class="bar ${st === 'down' ? 'down' : ''}" title="${st === 'up' ? 'Operasional' : 'Offline'}"></div>`;
@@ -164,7 +254,7 @@ async function refreshStatus(){
         <div class="service-header">
           <div>
             <div class="service-name">${s.name}</div>
-            <div style="font-size:11px;color:var(--muted)">${s.public_url}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${s.public_url}</div>
           </div>
           <div class="service-meta">
             <span class="latency">${s.latency_ms > 0 ? s.latency_ms + 'ms' : '-'}</span>
@@ -177,7 +267,6 @@ async function refreshStatus(){
         </div>
         <div class="bar-footer">
           <span>Pemeriksaan Terakhir</span>
-          <span>99.9% Uptime 30-Hari</span>
           <span>Sekarang</span>
         </div>
       `;
