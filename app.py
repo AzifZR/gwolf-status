@@ -10,6 +10,7 @@ import json
 import socket
 import urllib.request
 import urllib.error
+import urllib.parse
 import threading
 import subprocess
 import os
@@ -368,6 +369,49 @@ class StatusHandler(BaseHTTPRequestHandler):
                 pass
             self.send_json({"ok": True, "killed": killed})
             return
+
+        if p == "/api/webhook/deploy":
+            token = self.headers.get("X-Deploy-Token", "")
+            if not token:
+                qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                token = qs.get("token", [""])[0]
+            
+            try:
+                secret = open(os.path.expanduser("~/.deploy_token")).read().strip()
+            except Exception:
+                secret = ""
+            
+            if not secret or token != secret:
+                self.send_json({"error": "Unauthorized"}, 401)
+                return
+            
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            repo = qs.get("repo", [""])[0]
+            if not repo:
+                try:
+                    length = int(self.headers.get('Content-Length', 0))
+                    if length > 0:
+                        payload = json.loads(self.rfile.read(length).decode('utf-8'))
+                        repo = payload.get("repository", {}).get("name", "")
+                except Exception:
+                    pass
+
+            if repo == "discord-bot":
+                target = "discord-bot"
+            elif repo in ["gwolf-tools", "tools-web"]:
+                target = "gwolf-tools"
+            elif repo in ["gwolf-status", "status-web"]:
+                target = "gwolf-status"
+            else:
+                self.send_json({"error": f"Unknown repo: {repo}"}, 400)
+                return
+
+            script_path = os.path.expanduser("~/.hermes/profiles/pribadi/scripts/deploy-worker.sh")
+            subprocess.Popen(["bash", script_path, target], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            self.send_json({"ok": True, "message": f"Deployment queued for {target}"})
+            return
+
         self.send_response(404)
         self.end_headers()
 
