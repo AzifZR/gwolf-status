@@ -172,6 +172,30 @@ def get_system_telemetry():
     cf_alive = subprocess.run(["pgrep", "-f", "cloudflared tunnel"], stdout=subprocess.DEVNULL).returncode == 0
     supervisor_alive = subprocess.run("ps -ef | grep '[r]unsv'", shell=True, stdout=subprocess.DEVNULL).returncode == 0
 
+    top_procs = []
+    try:
+        out = subprocess.check_output("ps -eo pid,ppid,%cpu,%mem,comm,args --sort=-%mem | head -6", shell=True, text=True)
+        for line in out.strip().split("\n")[1:]:
+            parts = line.split(None, 5)
+            if len(parts) == 6:
+                cmd = parts[5]
+                if "hermes --profile" in cmd: short = "Hermes Gateway"
+                elif "discord-bot/dashboard" in cmd: short = "Discord Dashboard (:8090)"
+                elif "discord-bot" in cmd: short = "Discord Bot (main.py)"
+                elif "cloudflared" in cmd: short = "Cloudflare Tunnel"
+                elif "status-web" in cmd: short = "Status Web (:3002)"
+                elif "hermes-web-manager" in cmd or "app.py" in cmd: short = "Hermes Web Hub (:8081)" if "web-manager" in cmd else "App Web Worker"
+                elif "tools-web" in cmd: short = "Swiss Tools (:8083)"
+                elif "link-shortener" in cmd: short = "Bio-Link (:8082)"
+                elif "classroom-mcp" in cmd: short = "Classroom MCP Server"
+                else: short = parts[4]
+                top_procs.append({
+                    "pid": int(parts[0]), "ppid": int(parts[1]),
+                    "cpu": parts[2], "mem": parts[3], "name": short
+                })
+    except Exception:
+        pass
+
     return {
         "ram": {
             "used_mb": mem_used,
@@ -192,7 +216,8 @@ def get_system_telemetry():
         },
         "temp_c": temp_c,
         "cloudflared_running": cf_alive,
-        "supervisor_running": supervisor_alive
+        "supervisor_running": supervisor_alive,
+        "top_procs": top_procs
     }
 
 def ping_service(srv):
@@ -323,6 +348,26 @@ class StatusHandler(BaseHTTPRequestHandler):
             })
             return
 
+        self.send_response(404)
+        self.end_headers()
+
+    def do_POST(self):
+        p = self.path.split("?")[0]
+        if p == "/api/kill-zombies":
+            killed = []
+            try:
+                out = subprocess.check_output(
+                    "ps -eo pid,ppid,args | grep -E 'python|node|yt-dlp' | grep -v 'gateway' | grep -v 'mcp_stdio' | awk '$2==1 {print $1}'",
+                    shell=True, text=True
+                )
+                pids = [pid.strip() for pid in out.strip().split("\n") if pid.strip().isdigit()]
+                for pid in pids:
+                    subprocess.run(["kill", "-9", pid], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    killed.append(pid)
+            except Exception:
+                pass
+            self.send_json({"ok": True, "killed": killed})
+            return
         self.send_response(404)
         self.end_headers()
 

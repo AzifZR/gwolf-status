@@ -116,6 +116,27 @@ footer{
   .service-meta{gap:8px}
   .uptime-pct{display:none}
 }
+
+/* Top Procs Card */
+.procs-card{
+  background:var(--card); border:1px solid var(--card-border);
+  border-radius:12px; padding:16px; margin-bottom:32px;
+}
+.procs-header{
+  display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;
+}
+.btn-purge{
+  background:rgba(245,83,147,0.12); color:var(--down); border:1px solid rgba(245,83,147,0.3);
+  padding:5px 12px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;
+  transition:all 0.2s;
+}
+.btn-purge:hover{background:rgba(245,83,147,0.25)}
+.proc-row{
+  display:flex; justify-content:space-between; align-items:center; padding:6px 0;
+  border-bottom:1px solid rgba(255,255,255,0.03); font-size:12px;
+}
+.proc-row:last-child{border-bottom:none}
+.proc-meta{display:flex; gap:12px; font-family:monospace; font-size:11px; color:var(--muted)}
 </style>
 </head>
 <body>
@@ -164,6 +185,14 @@ footer{
       <div class="tel-val" id="telSup" style="color:var(--up)">-</div>
       <div class="tel-sub">Runsv Engine</div>
     </div>
+  </div>
+
+  <div class="procs-card" id="procsContainer" style="display:none">
+    <div class="procs-header">
+      <div class="section-title" style="margin-bottom:0">⚙️ Top 5 Proses Terberat</div>
+      <button class="btn-purge" onclick="killZombies(event)">🧹 Sapu Orphan & Zombie</button>
+    </div>
+    <div id="procsList"></div>
   </div>
 
   <div class="section-title">Layanan & Infrastruktur</div>
@@ -239,6 +268,28 @@ async function refreshStatus(){
           supEl.style.color = 'var(--down)';
         }
       }
+
+      // Top Procs
+      if(sys.top_procs && sys.top_procs.length > 0){
+        document.getElementById('procsContainer').style.display = 'block';
+        const pl = document.getElementById('procsList');
+        pl.innerHTML = '';
+        sys.top_procs.forEach(p => {
+          const row = document.createElement('div');
+          row.className = 'proc-row';
+          row.innerHTML = `
+            <div>
+              <span style="font-weight:600;color:#fff">${p.name}</span>
+              <span style="color:var(--muted);font-size:11px;margin-left:6px">PID: ${p.pid}</span>
+            </div>
+            <div class="proc-meta">
+              <span>RAM: ${p.mem}%</span>
+              <span>CPU: ${p.cpu}%</span>
+            </div>
+          `;
+          pl.appendChild(row);
+        });
+      }
     }
 
     // List
@@ -293,6 +344,28 @@ async function refreshStatus(){
     document.getElementById('lastUpdated').innerText = 'Terakhir dicek: ' + d.toLocaleTimeString('id-ID');
   }catch(err){
     console.error('Fetch status error:', err);
+  }
+}
+
+async function killZombies(e){
+  const btn = e.target;
+  const oldText = btn.innerText;
+  btn.innerText = 'Menyapu...';
+  btn.disabled = true;
+  try{
+    const res = await fetch('/api/kill-zombies', {method:'POST'});
+    const data = await res.json();
+    if(data.killed && data.killed.length > 0){
+      alert(`Berhasil membersihkan ${data.killed.length} orphan/zombie liar: PID ${data.killed.join(', ')}`);
+    } else {
+      alert('Sistem bersih! Tidak ada proses orphan/zombie liar (PPID 1).');
+    }
+    refreshStatus();
+  }catch(err){
+    alert('Gagal membersihkan zombie: ' + err);
+  }finally{
+    btn.innerText = oldText;
+    btn.disabled = false;
   }
 }
 
